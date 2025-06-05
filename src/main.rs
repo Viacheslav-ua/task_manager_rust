@@ -1,8 +1,7 @@
 use core::task;
-use std::{result, vec};
+use std::{f32::consts::E, io::Write, result, vec};
 
 use chrono::{DateTime, Local};
-
 
 enum Priority {
     Low,
@@ -23,11 +22,42 @@ struct Task {
     name: String,
     description: String,
     priority: Priority,
-    add_time:  DateTime<Local>
+    add_time: DateTime<Local>,
 }
 
 impl Task {
     fn new(name: String, description: String, priority: Priority) -> Self {
+        Self {
+            name,
+            description,
+            priority,
+            add_time: Local::now(),
+        }
+    }
+
+    fn new_from_console() -> Self {
+        let name = match ConsoleManager::input("Enter task name") {
+            Ok(name) => name,
+            Err(err) => panic!("Error getting task name: {err}"),
+        };
+
+        let description = match ConsoleManager::input("Enter task description") {
+            Ok(description) => description,
+            Err(err) => panic!("Error getting description: {err}"),
+        };
+
+        let priority = match ConsoleManager::input("Enter task priority (Low, Medium, High)") {
+            Ok(priority_string) => match priority_string.to_lowercase().as_str() {
+                "low" => Priority::Low,
+                "medium" => Priority::Medium,
+                "high" => Priority::High,
+                _ => {
+                    eprintln!("Invalid priority. Defaulting to Low.");
+                    Priority::Low
+                }
+            },
+            Err(err) => panic!("Error getting priority: {err}"),
+        };
         Self {
             name,
             description,
@@ -41,7 +71,8 @@ impl Task {
         println!("Description: {}", self.description);
         println!("Priority: {}", self.priority.to_string());
         println!("Added on: {}", self.add_time.format("%d-%m-%Y %H:%M:%S"));
-        println!("-------------------------");}
+        println!("-------------------------");
+    }
 }
 
 struct TasksManager {
@@ -67,7 +98,6 @@ impl TasksManager {
         if let Some(index) = self.find_task(name) {
             self.tasks.remove(index);
             Ok(format!("Task \"{}\" removed successfully.", name))
-            
         } else {
             Err(format!("Task \"{}\" not found.", name))
         }
@@ -87,7 +117,6 @@ impl TasksManager {
                     Ok(format!("Task \"{}\" updated successfully.", task.name))
                 }
                 None => Err("Error borrowing task.".to_owned()),
-                
             }
         } else {
             Err(format!("Task \"{}\" not found.", name))
@@ -95,12 +124,118 @@ impl TasksManager {
     }
 }
 
-fn main() {
-    let task = Task::new(
-        "Complete Rust project".to_owned(),
-        "Finish the Rust project by the end of the week.".to_owned(),
-        Priority::High,
-    );
+struct ConsoleManager {
+    tasks_manager: TasksManager,
+    menu_options: Vec<String>,
+}
 
-    task.print_task();
+impl ConsoleManager {
+    fn new() -> Self {
+        Self {
+            tasks_manager: TasksManager::new(),
+            menu_options: vec![
+                "Add Task".to_owned(),
+                "Find Task".to_owned(),
+                "Edit Task".to_owned(),
+                "Remove Task".to_owned(),
+                "Print Tasks".to_owned(),
+                "Srore tasks to file".to_owned(),
+                "Read tasks from file".to_owned(),
+            ],
+        }
+    }
+
+    fn print_menu(&self) {
+        for (index, menu_option) in self.menu_options.iter().enumerate() {
+            println!("{}. {}", index + 1, menu_option);
+        }
+    }
+
+    fn input(query: &str) -> std::io::Result<String> {
+        print!("{}: ", query);
+        std::io::stdout().flush()?;
+
+        let mut buffer = String::new();
+        std::io::stdin().read_line(&mut buffer)?;
+        Ok(buffer.trim().to_owned())
+    }
+
+    fn process_command(&mut self) {
+        match Self::input("\nEnter command index") {
+            Ok(command) => match command.as_str() {
+                "1" => {
+                    self.tasks_manager.add_task(Task::new_from_console());
+                }
+
+                "2" => {
+                    let name = match Self::input("Enter task name to find") {
+                        Ok(name) => name,
+                        Err(err) => {
+                            eprintln!("Error getting task name: {err}");
+                            return;
+                        }
+                    };
+
+                    match self.tasks_manager.find_task(&name) {
+                        Some(index) => {
+                            println!("Task found:");
+                            self.tasks_manager.tasks[index].print_task();
+                        },
+                        None => println!("Task \"{}\" not found.", name),
+                    }
+                }
+                
+                "3" => {
+                    let name = match Self::input("Enter task name to edit") {
+                        Ok(name) => name,
+                        Err(err) => {
+                            eprintln!("Error getting task name: {err}");
+                            return;
+                        }
+                    };
+
+                    match self
+                        .tasks_manager
+                        .edit_task(&name, Task::new_from_console())
+                    {
+                        Ok(msg) => println!("{}", msg),
+                        Err(msg) => eprintln!("{}", msg),
+                    }
+                }
+
+                "4" => {
+                    let name = match Self::input("Enter task name to remove") {
+                        Ok(name) => name,
+                        Err(err) => {
+                            eprintln!("Error getting task name: {err}");
+                            return;
+                        }
+                    };
+
+                    match self.tasks_manager.remove_task(&name) {
+                        Ok(msg) => println!("{}", msg),
+                        Err(msg) => eprintln!("{}", msg),
+                    }
+                }
+
+                "5" => self.tasks_manager.print_tasks(),
+
+                "6" => {}
+
+                "7" => {}
+
+                _ => eprintln!("I don't understand this command. Please try again."),
+            },
+            Err(err) => eprintln!("Error getting user input: {err}"),
+        }
+    }
+}
+
+fn main() {
+    let mut manager = ConsoleManager::new();
+        manager.print_menu();
+    loop {
+        manager.process_command();
+        println!()
+    }
 }

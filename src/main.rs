@@ -1,8 +1,8 @@
-use core::task;
-use std::{f32::consts::E, io::Write, result, vec};
-
+use std::{fs::File, io::{BufReader, Write}, path::Path, vec};
 use chrono::{DateTime, Local};
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize)]
 enum Priority {
     Low,
     Medium,
@@ -18,6 +18,7 @@ impl Priority {
         }
     }
 }
+#[derive(Serialize, Deserialize)]
 struct Task {
     name: String,
     description: String,
@@ -58,12 +59,8 @@ impl Task {
             },
             Err(err) => panic!("Error getting priority: {err}"),
         };
-        Self {
-            name,
-            description,
-            priority,
-            add_time: Local::now(),
-        }
+        
+        Self::new(name, description, priority)
     }
 
     fn print_task(&self) {
@@ -120,6 +117,42 @@ impl TasksManager {
             }
         } else {
             Err(format!("Task \"{}\" not found.", name))
+        }
+    }
+
+    fn store_to_file(&self, file_path: &str) -> Result<String, String> {
+        if !Path::new(file_path).exists() {
+            let file = match File::create(file_path) {
+                Ok(file) => file,
+                Err(err) => return Err(format!("Error creating file: {err}").to_owned()),
+            };
+
+            match serde_json::to_writer(&file, &self.tasks) {
+                Ok(_) => Ok("File created successfully.".to_owned()),
+                Err(err) => Err(format!("Error writing to file: {err}")),
+            }
+            
+        } else {
+            Err(format!("File \"{}\" already exists.", file_path).to_owned())
+        }
+    }
+    fn read_from_file(&mut self, file_path: &str) -> Result<String, String> {
+        if Path::new(file_path).exists() {
+            let file = match File::open(file_path) {
+                Ok(file) => file,
+                Err(err) => return Err(format!("Error opening file: {err}")),
+            };
+
+            let reader = BufReader::new(file);
+
+            self.tasks = match serde_json::from_reader(reader) {
+                Ok(tasks) => tasks,
+                Err(err) => return Err(format!("Error reading from file: {err}")),
+            };
+
+            Ok(format!("Tasks loaded successfully from \"{}\".", file_path))
+        } else {
+            return Err(format!("File \"{}\" does not exist.", file_path).to_owned());
         }
     }
 }
@@ -220,9 +253,35 @@ impl ConsoleManager {
 
                 "5" => self.tasks_manager.print_tasks(),
 
-                "6" => {}
+                "6" => {
+                    let file_path = match Self::input("Enter file path to store tasks") {
+                        Ok(path) => path,
+                        Err(err) => {
+                            eprintln!("Error getting file path: {err}");
+                            return;
+                        }
+                    };
 
-                "7" => {}
+                    match self.tasks_manager.store_to_file(&file_path) {
+                        Ok(msg) => println!("{}", msg),
+                        Err(msg) => eprintln!("{}", msg),
+                    }
+                }
+
+                "7" => {
+                    let file_path = match Self::input("Enter file path to read tasks") {
+                        Ok(path) => path,
+                        Err(err) => {
+                            eprintln!("Error getting file path: {err}");
+                            return;
+                        }
+                    };
+
+                    match self.tasks_manager.read_from_file(&file_path) {
+                        Ok(msg) => println!("{}", msg),
+                        Err(msg) => eprintln!("{}", msg),
+                    }
+                }
 
                 _ => eprintln!("I don't understand this command. Please try again."),
             },
